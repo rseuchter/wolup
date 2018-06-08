@@ -3,7 +3,7 @@
 
 #
 # Creation:    30.06.2013
-# Last Update: 02.01.2018
+# Last Update: 08.06.2018
 #
 # Copyright (c) 2013-2015 by Georg Kainzbauer <http://www.gtkdb.de>
 # Copyright (c) 2017-2018 by Roland Seuchter
@@ -25,6 +25,7 @@
 import argparse
 import re
 import socket
+import ipaddress
 import struct
 
 class MacAddress:
@@ -43,22 +44,41 @@ class MacAddress:
     def __str__(self):
         return ":".join([self.address.upper()[i:i+2] for i in range(0, len(self.address), 2)])
 
+def guess_broadcast_address(prefix = 24):
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+        s.connect(("1.1.1.1", 9))
+        nic = ipaddress.ip_interface((s.getsockname()[0], prefix))
+    return nic.network.broadcast_address.compressed
+
 def fetch_args():
     parser = argparse.ArgumentParser(
                 description="wolup - start computers through wake on lan",
                 epilog="""
-(c) 2013 by Georg Kainzbauer <http://www.gtkdb.de>
+(c) 2013-2015 by Georg Kainzbauer <http://www.gtkdb.de>
 (c) 2017-2018 by Roland Seuchter
 """,
                 formatter_class=argparse.RawDescriptionHelpFormatter
 )
     parser.add_argument('mac_list', metavar='MAC', type=MacAddress, nargs='+',
                         help = 'a MAC address of six hex bytes optionally separated by dot, colon, or hyphen e.g. 14:29:DA:DA:DA:00')
+    parser.add_argument('-b', metavar='BROADCASTIP', dest='broadcast_ip', type=ipaddress.IPv4Address,
+                        help = '(broadcast) IPv4 address to use for sending the WOL signal')
+    parser.add_argument('-g', '--guess-ip', action='store_true',
+                        help = 'try figure out the broadcast address automatically')
 
     return parser.parse_args()
 
 def main():
     args = fetch_args()
+
+    broadcast_addresses = []
+    if args.broadcast_ip:
+        broadcast_addresses.append(args.broadcast_ip.compressed)
+    if args.guess_ip:
+        broadcast_addresses.append(guess_broadcast_address())
+    if len(broadcast_addresses) == 0:
+        broadcast_addresses.append('255.255.255.255') # "limited broadcast"
+
     for mac in args.mac_list:
         print("Waking up {0} ...".format(mac))
 
@@ -71,9 +91,9 @@ def main():
         # send magic packet
         datagramSocket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         datagramSocket.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-        bytes_sent = datagramSocket.sendto(payload, ("<broadcast>", 9))
-
-        print("Sent %d bytes" % bytes_sent)
+        for b in broadcast_addresses:
+            bytes_sent = datagramSocket.sendto(payload, (b, 9))
+            print("Sent %d bytes to %s" % (bytes_sent, b))
 
 if __name__ == '__main__':
     main()

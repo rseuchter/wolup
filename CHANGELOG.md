@@ -1,6 +1,13 @@
 Summary of Changes
 ==================
 
+## June 2018
+
+### Major Changes
+
+- Introduced `-b` option for specifying target (broadcast) address
+- Introduced `-g` flag for guessing target broadcast automatically
+
 ## January 2018
 
 ### Major Changes
